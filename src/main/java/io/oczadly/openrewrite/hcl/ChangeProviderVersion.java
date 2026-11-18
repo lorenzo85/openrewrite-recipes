@@ -31,8 +31,6 @@ import java.util.Collections;
 @EqualsAndHashCode(callSuper = false)
 public class ChangeProviderVersion extends Recipe {
 
-    private static final String INVALID_PROVIDER_VERSION_MESSAGE = "'providerVersion' must be a valid semantic version constraint.";
-
     @Option(displayName = "Provider name", description = "Optional provider local name filter, i.e. the key in required_providers (for example 'aws')", required = false)
     @Nullable
     String providerName;
@@ -82,7 +80,7 @@ public class ChangeProviderVersion extends Recipe {
     public @NonNull TreeVisitor<?, ExecutionContext> getVisitor() {
         String resolvedProviderName = TopLevelBlockRecipeSupport.resolveOptionalFilterValue(providerName, "providerName");
         String resolvedProviderSource = TopLevelBlockRecipeSupport.resolveRequiredValue(providerSource, "providerSource");
-        String resolvedProviderVersion = resolveProviderVersionFilter(providerVersion);
+        String resolvedProviderVersion = TopLevelBlockRecipeSupport.resolveOptionalVersionFilterValue(providerVersion, "providerVersion");
         String resolvedNewVersion = TopLevelBlockRecipeSupport.resolveRequiredValue(newVersion, "newVersion");
 
         return ProviderRecipeSupport.scopedVisitor(filePattern, new HclVisitor<ExecutionContext>() {
@@ -128,21 +126,9 @@ public class ChangeProviderVersion extends Recipe {
         validated = TopLevelBlockRecipeSupport.validateOptionalNonBlank(validated, "providerName", providerName);
         validated = TopLevelBlockRecipeSupport.validateRequiredHclIdentifier(validated, "providerName", providerName);
         validated = TopLevelBlockRecipeSupport.validateRequiredNonBlank(validated, "providerSource", providerSource);
-        validated = TopLevelBlockRecipeSupport.validateOptionalNonBlank(validated, "providerVersion", providerVersion);
-        if (providerVersion != null && !providerVersion.trim().isEmpty() && !providerVersion.contains("${")
-            && !VersionConstraintMatcher.isValidConstraint(providerVersion)) {
-            validated = validated.and(Validated.invalid("providerVersion", providerVersion, INVALID_PROVIDER_VERSION_MESSAGE));
-        }
+        validated = TopLevelBlockRecipeSupport.validateOptionalVersionConstraint(validated, "providerVersion", providerVersion);
         validated = TopLevelBlockRecipeSupport.validateRequiredNonBlank(validated, "newVersion", newVersion);
         return validated;
-    }
-
-    private static @Nullable String resolveProviderVersionFilter(@Nullable String value) {
-        String resolved = TopLevelBlockRecipeSupport.resolveOptionalFilterValue(value, "providerVersion");
-        if (resolved != null && !VersionConstraintMatcher.isValidConstraint(resolved)) {
-            throw new IllegalStateException(INVALID_PROVIDER_VERSION_MESSAGE);
-        }
-        return resolved;
     }
 
     private static boolean isRequiredProvidersEntry(Cursor attributeCursor) {

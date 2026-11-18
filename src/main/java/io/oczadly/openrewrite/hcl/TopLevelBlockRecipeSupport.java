@@ -189,12 +189,18 @@ final class TopLevelBlockRecipeSupport {
 
     static Validated<Object> validateOptionalVersionConstraint(Validated<Object> validated,
                                                                @Nullable String value) {
-        validated = validateOptionalNonBlank(validated, "version", value);
+        return validateOptionalVersionConstraint(validated, "version", value);
+    }
+
+    static Validated<Object> validateOptionalVersionConstraint(Validated<Object> validated,
+                                                               String fieldName,
+                                                               @Nullable String value) {
+        validated = validateOptionalNonBlank(validated, fieldName, value);
         if (value != null && !value.trim().isEmpty() && !value.contains("${") && !VersionConstraintMatcher.isValidConstraint(value)) {
             return validated.and(Validated.invalid(
-                "version",
+                fieldName,
                 value,
-                VersionConstraintMatcher.INVALID_CONSTRAINT_MESSAGE
+                VersionConstraintMatcher.invalidConstraintMessage(fieldName)
             ));
         }
         return validated;
@@ -261,9 +267,13 @@ final class TopLevelBlockRecipeSupport {
     }
 
     static @Nullable String resolveOptionalVersionFilterValue(@Nullable String value) {
-        String resolved = resolveOptionalFilterValue(value, "version");
+        return resolveOptionalVersionFilterValue(value, "version");
+    }
+
+    static @Nullable String resolveOptionalVersionFilterValue(@Nullable String value, String fieldName) {
+        String resolved = resolveOptionalFilterValue(value, fieldName);
         if (resolved != null && !VersionConstraintMatcher.isValidConstraint(resolved)) {
-            throw new IllegalStateException(VersionConstraintMatcher.INVALID_CONSTRAINT_MESSAGE);
+            throw new IllegalStateException(VersionConstraintMatcher.invalidConstraintMessage(fieldName));
         }
         return resolved;
     }
