@@ -36,7 +36,7 @@ terraform {
 }
 ```
 
-A short entry such as `helm = "~> 2.17"` has no `source`. Terraform reads it as `hashicorp/helm`, so it matches `providerSource: "hashicorp/helm"`.
+When an entry has no `source`, such as the short entry `helm = "~> 2.17"`, Terraform reads it as `hashicorp/helm`, so it matches `providerSource: "hashicorp/helm"`.
 
 The recipe does not change:
 

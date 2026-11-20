@@ -29,7 +29,8 @@ import java.util.Collections;
 @EqualsAndHashCode(callSuper = false)
 public class ChangeProviderVersion extends Recipe {
 
-    private static final String SHORTHAND_SOURCE_NAMESPACE = "hashicorp/";
+    // Terraform gives a provider entry without a source the source hashicorp/<name>.
+    private static final String IMPLIED_SOURCE_NAMESPACE = "hashicorp/";
 
     @Option(displayName = "Provider name", description = "Optional provider local name filter, i.e. the key in required_providers (for example 'aws')", required = false)
     @Nullable
@@ -88,22 +89,25 @@ public class ChangeProviderVersion extends Recipe {
             public @NonNull Hcl visitAttribute(Hcl.@NonNull Attribute attribute, ExecutionContext ctx) {
                 Hcl.Attribute visited = (Hcl.Attribute) super.visitAttribute(attribute, ctx);
 
-                if (!isRequiredProvidersEntry(getCursor())
-                    || (resolvedProviderName != null && !resolvedProviderName.equals(visited.getSimpleName()))) {
+                if (!isRequiredProvidersEntry(getCursor())) {
+                    return visited;
+                }
+                if (resolvedProviderName != null && !resolvedProviderName.equals(visited.getSimpleName())) {
                     return visited;
                 }
 
+                // A shorthand entry such as `aws = "~> 5.0"` holds only the version.
                 if (!(visited.getValue() instanceof Hcl.ObjectValue)) {
-                    // A shorthand entry such as `aws = "~> 5.0"` has the implied source hashicorp/<name>.
-                    if (!resolvedProviderSource.equals(SHORTHAND_SOURCE_NAMESPACE + visited.getSimpleName())
-                        || !shouldChangeVersion(visited)) {
+                    if (!resolvedProviderSource.equals(impliedSource(visited)) || !shouldChangeVersion(visited)) {
                         return visited;
                     }
                     return withNewVersion(visited);
                 }
 
                 Hcl.ObjectValue providerEntry = (Hcl.ObjectValue) visited.getValue();
-                if (!resolvedProviderSource.equals(stringValueOf(findEntryAttribute(providerEntry, "source")))) {
+                Hcl.Attribute sourceAttribute = findEntryAttribute(providerEntry, "source");
+                String entrySource = sourceAttribute == null ? impliedSource(visited) : stringValueOf(sourceAttribute);
+                if (!resolvedProviderSource.equals(entrySource)) {
                     return visited;
                 }
 
@@ -113,20 +117,27 @@ public class ChangeProviderVersion extends Recipe {
                 }
 
                 Hcl.Attribute updatedVersionAttribute = withNewVersion(versionAttribute);
+                // Trees are immutable, so the attribute to replace is the same instance found above.
                 return visited.withValue(providerEntry.withArguments(ListUtils.map(
                     providerEntry.getAttributes(),
                     entryAttribute -> entryAttribute == versionAttribute ? updatedVersionAttribute : entryAttribute)));
             }
 
-            private boolean shouldChangeVersion(Hcl.Attribute versionAttribute) {
-                String currentVersion = stringValueOf(versionAttribute);
+            /**
+             * @param attributeHoldingVersion the {@code version} attribute of an object entry, or a whole shorthand entry
+             */
+            private boolean shouldChangeVersion(Hcl.Attribute attributeHoldingVersion) {
+                String currentVersion = stringValueOf(attributeHoldingVersion);
                 return currentVersion != null
                        && !resolvedNewVersion.equals(currentVersion)
                        && (resolvedProviderVersion == null || VersionConstraintMatcher.matches(resolvedProviderVersion, currentVersion));
             }
 
-            private Hcl.Attribute withNewVersion(Hcl.Attribute versionAttribute) {
-                return versionAttribute.withValue(withStringValue(versionAttribute.getValue(), resolvedNewVersion));
+            /**
+             * Only called after {@link #shouldChangeVersion} accepted the attribute, so its value is a plain string.
+             */
+            private Hcl.Attribute withNewVersion(Hcl.Attribute attributeHoldingVersion) {
+                return attributeHoldingVersion.withValue(withStringValue(attributeHoldingVersion.getValue(), resolvedNewVersion));
             }
         });
     }
@@ -142,6 +153,14 @@ public class ChangeProviderVersion extends Recipe {
         return validated;
     }
 
+    private static String impliedSource(Hcl.Attribute providerEntry) {
+        return IMPLIED_SOURCE_NAMESPACE + providerEntry.getSimpleName();
+    }
+
+    /**
+     * True when the attribute sits directly in a {@code required_providers} block of a top-level {@code terraform} block:
+     * attribute → required_providers → terraform → file.
+     */
     private static boolean isRequiredProvidersEntry(Cursor attributeCursor) {
         Cursor requiredProvidersCursor = attributeCursor.getParentTreeCursor();
         if (!(requiredProvidersCursor.getValue() instanceof Hcl.Block)
@@ -167,6 +186,10 @@ public class ChangeProviderVersion extends Recipe {
     /**
      * Returns the value of a plain string attribute, or {@code null} when the attribute is missing
      * or its value is not a static string (for example an interpolated template or a variable reference).
+     *
+     * <p>The parser gives a quoted string as a {@link Hcl.QuotedTemplate} holding one {@link Hcl.Literal} with the
+     * text between the quotes. A string {@link Hcl.Literal} whose source includes the quotes is accepted too, as
+     * {@link Hcl.Block#withAttributeValue} does.
      */
     private static @Nullable String stringValueOf(Hcl.@Nullable Attribute attribute) {
         if (attribute == null) {
@@ -189,9 +212,14 @@ public class ChangeProviderVersion extends Recipe {
         return null;
     }
 
+    /**
+     * Replaces a value that {@link #stringValueOf} read as a plain string, so it is either a
+     * {@link Hcl.QuotedTemplate} or a string {@link Hcl.Literal}.
+     */
     private static Expression withStringValue(Expression value, String newValue) {
         String quoted = TopLevelBlockRecipeSupport.quoteHclString(newValue);
         if (value instanceof Hcl.QuotedTemplate) {
+            // The template's literal holds the escaped text without its quotes.
             String unquoted = quoted.substring(1, quoted.length() - 1);
             return ((Hcl.QuotedTemplate) value).withExpressions(Collections.singletonList(
                 new Hcl.Literal(Tree.randomId(), Space.EMPTY, Markers.EMPTY, newValue, unquoted)));
