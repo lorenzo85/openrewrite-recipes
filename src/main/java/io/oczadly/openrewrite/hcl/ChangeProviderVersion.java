@@ -2,7 +2,6 @@ package io.oczadly.openrewrite.hcl;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import io.oczadly.openrewrite.hcl.utils.ModuleBlockPredicates;
 import io.oczadly.openrewrite.hcl.utils.VersionConstraintMatcher;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
@@ -146,7 +145,7 @@ public class ChangeProviderVersion extends Recipe {
     public @NonNull Validated<Object> validate() {
         Validated<Object> validated = super.validate();
         validated = TopLevelBlockRecipeSupport.validateOptionalNonBlank(validated, "providerName", providerName);
-        validated = TopLevelBlockRecipeSupport.validateRequiredHclIdentifier(validated, "providerName", providerName);
+        validated = TopLevelBlockRecipeSupport.validateProviderLocalName(validated, "providerName", providerName);
         validated = TopLevelBlockRecipeSupport.validateRequiredNonBlank(validated, "providerSource", providerSource);
         validated = TopLevelBlockRecipeSupport.validateOptionalVersionConstraint(validated, "providerVersion", providerVersion);
         validated = TopLevelBlockRecipeSupport.validateRequiredNonBlank(validated, "newVersion", newVersion);
@@ -176,7 +175,10 @@ public class ChangeProviderVersion extends Recipe {
 
     private static Hcl.@Nullable Attribute findEntryAttribute(Hcl.ObjectValue providerEntry, String name) {
         for (Expression expression : providerEntry.getAttributes()) {
-            if (expression instanceof Hcl.Attribute && name.equals(((Hcl.Attribute) expression).getSimpleName())) {
+            // A quoted key, such as `"version" = "~> 5.0"`, has no simple name, so its entry is skipped.
+            if (expression instanceof Hcl.Attribute
+                && ((Hcl.Attribute) expression).getName() instanceof Hcl.Identifier
+                && name.equals(((Hcl.Attribute) expression).getSimpleName())) {
                 return (Hcl.Attribute) expression;
             }
         }
@@ -188,8 +190,7 @@ public class ChangeProviderVersion extends Recipe {
      * or its value is not a static string (for example an interpolated template or a variable reference).
      *
      * <p>The parser gives a quoted string as a {@link Hcl.QuotedTemplate} holding one {@link Hcl.Literal} with the
-     * text between the quotes. A string {@link Hcl.Literal} whose source includes the quotes is accepted too, as
-     * {@link Hcl.Block#withAttributeValue} does.
+     * text between the quotes.
      */
     private static @Nullable String stringValueOf(Hcl.@Nullable Attribute attribute) {
         if (attribute == null) {
@@ -197,9 +198,6 @@ public class ChangeProviderVersion extends Recipe {
         }
 
         Expression value = attribute.getValue();
-        if (value instanceof Hcl.Literal && ((Hcl.Literal) value).getValue() instanceof String) {
-            return ModuleBlockPredicates.removeQuotes(((Hcl.Literal) value).getValueSource());
-        }
         if (value instanceof Hcl.QuotedTemplate) {
             Hcl.QuotedTemplate template = (Hcl.QuotedTemplate) value;
             if (template.getExpressions().isEmpty()) {
@@ -213,17 +211,17 @@ public class ChangeProviderVersion extends Recipe {
     }
 
     /**
-     * Replaces a value that {@link #stringValueOf} read as a plain string, so it is either a
-     * {@link Hcl.QuotedTemplate} or a string {@link Hcl.Literal}.
+     * Replaces a value that {@link #stringValueOf} read as a plain string, a {@link Hcl.QuotedTemplate} holding one
+     * {@link Hcl.Literal}, or none for {@code ""}. The literal is kept, with its id and markers.
      */
     private static Expression withStringValue(Expression value, String newValue) {
         String quoted = TopLevelBlockRecipeSupport.quoteHclString(newValue);
-        if (value instanceof Hcl.QuotedTemplate) {
-            // The template's literal holds the escaped text without its quotes.
-            String unquoted = quoted.substring(1, quoted.length() - 1);
-            return ((Hcl.QuotedTemplate) value).withExpressions(Collections.singletonList(
-                new Hcl.Literal(Tree.randomId(), Space.EMPTY, Markers.EMPTY, newValue, unquoted)));
-        }
-        return ((Hcl.Literal) value).withValue(newValue).withValueSource(quoted);
+        // The template's literal holds the escaped text without its quotes.
+        String unquoted = quoted.substring(1, quoted.length() - 1);
+        Hcl.QuotedTemplate template = (Hcl.QuotedTemplate) value;
+        Hcl.Literal literal = template.getExpressions().isEmpty()
+            ? new Hcl.Literal(Tree.randomId(), Space.EMPTY, Markers.EMPTY, newValue, unquoted)
+            : ((Hcl.Literal) template.getExpressions().get(0)).withValue(newValue).withValueSource(unquoted);
+        return template.withExpressions(Collections.singletonList(literal));
     }
 }
