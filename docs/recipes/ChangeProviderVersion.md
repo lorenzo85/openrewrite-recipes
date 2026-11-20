@@ -22,7 +22,7 @@ All options except `filePattern` support placeholders like `${property}`.
 
 ## Matching semantics
 
-Only the `version` of an object entry in a top-level `terraform { required_providers { } }` block changes. Provider configuration blocks, modules, shorthand entries (`aws = "~> 5.0"`), entries without a `version`, and entries whose `version` is not a plain string are left alone.
+Only the version of an entry in a top-level `terraform { required_providers { } }` block changes: the `version` of an object entry, or the value of a shorthand entry such as `aws = "~> 5.0"`, whose source is the implied `hashicorp/<name>`. Provider configuration blocks, modules, entries without a `version`, and versions that are not a plain string are left alone.
 
 `providerVersion` uses the same matcher as [Change module version](ChangeModuleVersion.md): a current version matches when it is a concrete version such as `5.82.1`, or one operator and a version such as `~> 5.82`, whose version is matched.
 

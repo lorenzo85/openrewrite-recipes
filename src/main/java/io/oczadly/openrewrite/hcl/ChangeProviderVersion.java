@@ -29,6 +29,8 @@ import java.util.Collections;
 @EqualsAndHashCode(callSuper = false)
 public class ChangeProviderVersion extends Recipe {
 
+    private static final String SHORTHAND_SOURCE_NAMESPACE = "hashicorp/";
+
     @Option(displayName = "Provider name", description = "Optional provider local name filter, i.e. the key in required_providers (for example 'aws')", required = false)
     @Nullable
     String providerName;
@@ -87,9 +89,17 @@ public class ChangeProviderVersion extends Recipe {
                 Hcl.Attribute visited = (Hcl.Attribute) super.visitAttribute(attribute, ctx);
 
                 if (!isRequiredProvidersEntry(getCursor())
-                    || (resolvedProviderName != null && !resolvedProviderName.equals(visited.getSimpleName()))
-                    || !(visited.getValue() instanceof Hcl.ObjectValue)) {
+                    || (resolvedProviderName != null && !resolvedProviderName.equals(visited.getSimpleName()))) {
                     return visited;
+                }
+
+                if (!(visited.getValue() instanceof Hcl.ObjectValue)) {
+                    // A shorthand entry such as `aws = "~> 5.0"` has the implied source hashicorp/<name>.
+                    if (!resolvedProviderSource.equals(SHORTHAND_SOURCE_NAMESPACE + visited.getSimpleName())
+                        || !shouldChangeVersion(visited)) {
+                        return visited;
+                    }
+                    return withNewVersion(visited);
                 }
 
                 Hcl.ObjectValue providerEntry = (Hcl.ObjectValue) visited.getValue();
@@ -98,19 +108,25 @@ public class ChangeProviderVersion extends Recipe {
                 }
 
                 Hcl.Attribute versionAttribute = findEntryAttribute(providerEntry, "version");
-                String currentVersion = stringValueOf(versionAttribute);
-                if (versionAttribute == null || currentVersion == null || resolvedNewVersion.equals(currentVersion)) {
-                    return visited;
-                }
-                if (resolvedProviderVersion != null && !VersionConstraintMatcher.matches(resolvedProviderVersion, currentVersion)) {
+                if (versionAttribute == null || !shouldChangeVersion(versionAttribute)) {
                     return visited;
                 }
 
-                Hcl.Attribute updatedVersionAttribute = versionAttribute.withValue(
-                    withStringValue(versionAttribute.getValue(), resolvedNewVersion));
+                Hcl.Attribute updatedVersionAttribute = withNewVersion(versionAttribute);
                 return visited.withValue(providerEntry.withArguments(ListUtils.map(
                     providerEntry.getAttributes(),
                     entryAttribute -> entryAttribute == versionAttribute ? updatedVersionAttribute : entryAttribute)));
+            }
+
+            private boolean shouldChangeVersion(Hcl.Attribute versionAttribute) {
+                String currentVersion = stringValueOf(versionAttribute);
+                return currentVersion != null
+                       && !resolvedNewVersion.equals(currentVersion)
+                       && (resolvedProviderVersion == null || VersionConstraintMatcher.matches(resolvedProviderVersion, currentVersion));
+            }
+
+            private Hcl.Attribute withNewVersion(Hcl.Attribute versionAttribute) {
+                return versionAttribute.withValue(withStringValue(versionAttribute.getValue(), resolvedNewVersion));
             }
         });
     }

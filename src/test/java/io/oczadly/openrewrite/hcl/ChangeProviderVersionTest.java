@@ -323,13 +323,123 @@ class ChangeProviderVersionTest implements RewriteTest {
     }
 
     @Test
-    void shouldNotChangeShorthandProviderEntry() {
+    void shouldChangeShorthandProviderEntry() {
         rewriteRun(
             hcl(
                 """
                 terraform {
                   required_providers {
-                    aws = "~> 5.0"
+                    aws = ">= 5.0.0"
+                  }
+                }
+                """,
+                """
+                terraform {
+                  required_providers {
+                    aws = "~> 6.0"
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void shouldChangeShorthandAndObjectEntriesInOneBlock() {
+        rewriteRun(
+            spec -> spec.recipe(new ChangeProviderVersion(null, "hashicorp/helm", null, "3.1.0", null)),
+            hcl(
+                """
+                terraform {
+                  required_providers {
+                    aws  = "~> 5.0"
+                    helm = "~> 2.17"
+                    kubectl = {
+                      source  = "gavinbunney/kubectl"
+                      version = "~> 1.19"
+                    }
+                  }
+                }
+                """,
+                """
+                terraform {
+                  required_providers {
+                    aws  = "~> 5.0"
+                    helm = "3.1.0"
+                    kubectl = {
+                      source  = "gavinbunney/kubectl"
+                      version = "~> 1.19"
+                    }
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void shouldNotChangeShorthandEntryOutsideTheHashicorpNamespace() {
+        rewriteRun(
+            spec -> spec.recipe(new ChangeProviderVersion(null, "integrations/github", null, "~> 6.0", null)),
+            hcl(
+                """
+                terraform {
+                  required_providers {
+                    github = "~> 5.0"
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void shouldChangeShorthandEntryWhenVersionFilterMatches() {
+        rewriteRun(
+            spec -> spec.recipe(new ChangeProviderVersion(null, "hashicorp/aws", "~> 5.0", "~> 6.0", null)),
+            hcl(
+                """
+                terraform {
+                  required_providers {
+                    aws = "~> 5.82"
+                  }
+                }
+                """,
+                """
+                terraform {
+                  required_providers {
+                    aws = "~> 6.0"
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void shouldNotChangeShorthandEntryWhenVersionFilterDoesNotMatch() {
+        rewriteRun(
+            spec -> spec.recipe(new ChangeProviderVersion(null, "hashicorp/aws", "~> 5.0", "~> 6.0", null)),
+            hcl(
+                """
+                terraform {
+                  required_providers {
+                    aws = "~> 4.67"
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
+    void shouldNotChangeShorthandEntryWithDynamicVersion() {
+        rewriteRun(
+            hcl(
+                """
+                terraform {
+                  required_providers {
+                    aws = var.aws_provider_version
                   }
                 }
                 """
