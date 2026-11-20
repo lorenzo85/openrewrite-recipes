@@ -17,8 +17,6 @@ import org.openrewrite.Tree;
 import org.openrewrite.TreeVisitor;
 import org.openrewrite.Validated;
 import org.openrewrite.hcl.HclVisitor;
-import org.openrewrite.hcl.format.SpacesVisitor;
-import org.openrewrite.hcl.style.SpacesStyle;
 import org.openrewrite.hcl.tree.Expression;
 import org.openrewrite.hcl.tree.Hcl;
 import org.openrewrite.hcl.tree.Space;
@@ -110,12 +108,9 @@ public class ChangeProviderVersion extends Recipe {
 
                 Hcl.Attribute updatedVersionAttribute = versionAttribute.withValue(
                     withStringValue(versionAttribute.getValue(), resolvedNewVersion));
-                Hcl.Attribute modified = visited.withValue(providerEntry.withArguments(ListUtils.map(
+                return visited.withValue(providerEntry.withArguments(ListUtils.map(
                     providerEntry.getAttributes(),
                     entryAttribute -> entryAttribute == versionAttribute ? updatedVersionAttribute : entryAttribute)));
-
-                doAfterVisit(new SpacesVisitor<>(SpacesStyle.DEFAULT, modified));
-                return modified;
             }
         });
     }

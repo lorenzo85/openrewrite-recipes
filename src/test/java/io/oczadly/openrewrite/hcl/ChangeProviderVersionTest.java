@@ -207,6 +207,50 @@ class ChangeProviderVersionTest implements RewriteTest {
     }
 
     @Test
+    void shouldNotReformatCodeOutsideTheVersionAttribute() {
+        rewriteRun(
+            hcl(
+                """
+                locals {
+                  settings = {
+                    enabled = true
+                    # A comment between attributes ends terraform fmt's alignment group.
+                    retention_in_days = 30
+                  }
+                }
+
+                terraform {
+                  required_providers {
+                    aws = {
+                      source  = "hashicorp/aws"
+                      version = "~> 5.0"
+                    }
+                  }
+                }
+                """,
+                """
+                locals {
+                  settings = {
+                    enabled = true
+                    # A comment between attributes ends terraform fmt's alignment group.
+                    retention_in_days = 30
+                  }
+                }
+
+                terraform {
+                  required_providers {
+                    aws = {
+                      source  = "hashicorp/aws"
+                      version = "~> 6.0"
+                    }
+                  }
+                }
+                """
+            )
+        );
+    }
+
+    @Test
     void shouldOnlyChangeProviderWithMatchingName() {
         rewriteRun(
             spec -> spec.recipe(new ChangeProviderVersion("aws", "hashicorp/aws", null, "~> 6.0", null)),
