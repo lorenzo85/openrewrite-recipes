@@ -10,33 +10,23 @@ Changes the version constraint of a provider entry in `terraform.required_provid
 
 ## Options
 
-| Type     | Name            | Description                                                                                                            | Example            |
-|----------|-----------------|------------------------------------------------------------------------------------------------------------------------|--------------------|
-| `String` | providerName    | *Optional*. Local name of the provider (the key in `required_providers`). Supports placeholders like `${property}`.    | `"aws"`            |
-| `String` | providerSource  | Source address of the provider entry to modify, compared exactly. Required and cannot be blank. Supports placeholders. | `"hashicorp/aws"`  |
-| `String` | providerVersion | *Optional*. Semantic version constraint filter for the provider's current version constraint. Supports placeholders.   | `"~> 5.0"`         |
-| `String` | newVersion      | The new version constraint to set, written as given. Required and cannot be blank. Supports placeholders.              | `"~> 6.0"`         |
-| `String` | filePattern     | *Optional*. A glob pattern to match files to apply this recipe to. Defaults to `**/*.tf`.                              | `"**/versions.tf"` |
+| Type     | Name            | Description                                                             | Example            |
+|----------|-----------------|-------------------------------------------------------------------------|--------------------|
+| `String` | providerSource  | Source of the provider entry to change, compared exactly.               | `"hashicorp/aws"`  |
+| `String` | newVersion      | The version constraint to set, written as given.                        | `"~> 6.0"`         |
+| `String` | providerName    | *Optional*. The provider's key in `required_providers`.                 | `"aws"`            |
+| `String` | providerVersion | *Optional*. Semantic version constraint the current version must match. | `"~> 5.0"`         |
+| `String` | filePattern     | *Optional*. A glob pattern to match files to apply this recipe to.      | `"**/versions.tf"` |
+
+All options except `filePattern` support placeholders like `${property}`.
 
 ## Matching semantics
 
-Only the `version` attribute of object-style entries inside a top-level `terraform { required_providers { ... } }` block is changed. Provider configuration blocks (`provider "aws" {}`), module blocks, and any other attribute are left untouched.
+Only the `version` of an object entry in a top-level `terraform { required_providers { } }` block changes. Provider configuration blocks, modules, shorthand entries (`aws = "~> 5.0"`), entries without a `version`, and entries whose `version` is not a plain string are left alone.
 
-An entry matches when:
-
-* its `source` attribute is a plain string equal to `providerSource`. The comparison is exact, so `hashicorp/aws` does not match `registry.terraform.io/hashicorp/aws`;
-* its key equals `providerName`, when `providerName` is specified;
-* its current `version` matches `providerVersion`, when `providerVersion` is specified.
-
-Entries without a `version` attribute, entries whose `version` is not a plain string, and legacy shorthand entries such as `aws = "~> 5.0"` (which have no `source`) are left unchanged. Entries already set to `newVersion` are left unchanged.
-
-## Version filter semantics
-
-When `providerVersion` is specified, it is interpreted as a semantic version constraint, using the same matcher as [Change module version](ChangeModuleVersion.md). The matcher supports `=`, `!=`, `>`, `>=`, `<`, `<=`, `~>`, and comma-separated AND constraints such as `>= 5.0, < 6.0`. Provider entries match when their `version` is either a concrete stable version literal such as `5.82.1`, or a single operator-prefixed value such as `~> 5.82` where the operator is stripped and the numeric portion is matched. Missing, dynamic/interpolated, invalid, and multi-clause provider version values do not match.
+`providerVersion` uses the same matcher as [Change module version](ChangeModuleVersion.md): a current version matches when it is a concrete version such as `5.82.1`, or one operator and a version such as `~> 5.82`, whose version is matched.
 
 ## Example
-
-The following example demonstrates changing the version constraint of the `hashicorp/aws` provider.
 
 | Parameter       | Value             |
 |-----------------|-------------------|
@@ -72,7 +62,7 @@ terraform {
 
 ## Usage
 
-This recipe requires configuration parameters. In your **rewrite.yml** create a new recipe with a unique name. For example: `io.oczadly.providers.ChangeAwsProviderFrom5xTo6x`. Here's how you can define and customize such a recipe within your **rewrite.yml**:
+Define a recipe in your **rewrite.yml**:
 
 ```yaml title="rewrite.yml"
 ---
@@ -87,9 +77,7 @@ recipeList:
       newVersion: "~> 6.0"
 ```
 
-Now that `io.oczadly.providers.ChangeAwsProviderFrom5xTo6x` has been defined, activate it in your build file:
-
-1. Add the following to your **build.gradle.kts** file:
+Activate it in your **build.gradle.kts**:
 
 ```kotlin title="build.gradle.kts"
 plugins {
@@ -109,4 +97,4 @@ rewrite {
 }
 ```
 
-2. Run `gradle rewriteRun` to run the recipe.
+Then run `gradle rewriteRun`.
