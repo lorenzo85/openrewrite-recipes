@@ -2,7 +2,7 @@
 
 `io.oczadly.openrewrite.hcl.ChangeProviderVersion`
 
-Changes the version constraint of a provider entry in `terraform.required_providers`.
+Changes the version of a provider in `terraform { required_providers { } }`.
 
 ## Recipe source
 
@@ -10,21 +10,41 @@ Changes the version constraint of a provider entry in `terraform.required_provid
 
 ## Options
 
-| Type     | Name            | Description                                                             | Example            |
-|----------|-----------------|-------------------------------------------------------------------------|--------------------|
-| `String` | providerSource  | Source of the provider entry to change, compared exactly.               | `"hashicorp/aws"`  |
-| `String` | newVersion      | The version constraint to set, written as given.                        | `"~> 6.0"`         |
-| `String` | providerName    | *Optional*. The provider's key in `required_providers`.                 | `"aws"`            |
-| `String` | providerVersion | *Optional*. Semantic version constraint the current version must match. | `"~> 5.0"`         |
-| `String` | filePattern     | *Optional*. A glob pattern to match files to apply this recipe to.      | `"**/versions.tf"` |
+| Type     | Name            | Description                                                                  | Example            |
+|----------|-----------------|------------------------------------------------------------------------------|--------------------|
+| `String` | providerSource  | The source of the provider to change. It must match exactly.                 | `"hashicorp/aws"`  |
+| `String` | newVersion      | The new version. It is written as you give it.                               | `"~> 6.0"`         |
+| `String` | providerName    | *Optional*. Change only the provider with this name in `required_providers`. | `"aws"`            |
+| `String` | providerVersion | *Optional*. Change the provider only if its current version matches this.    | `"~> 5.0"`         |
+| `String` | filePattern     | *Optional*. Change only the files that match this pattern.                   | `"**/versions.tf"` |
 
-All options except `filePattern` support placeholders like `${property}`.
+You can use placeholders like `${property}` in every option except `filePattern`.
 
-## Matching semantics
+## What it changes
 
-Only the version of an entry in a top-level `terraform { required_providers { } }` block changes: the `version` of an object entry, or the value of a shorthand entry such as `aws = "~> 5.0"`, whose source is the implied `hashicorp/<name>`. Provider configuration blocks, modules, entries without a `version`, and versions that are not a plain string are left alone.
+The recipe changes the version of a provider in the `required_providers` block of a top-level `terraform` block. It works with both forms:
 
-`providerVersion` uses the same matcher as [Change module version](ChangeModuleVersion.md): a current version matches when it is a concrete version such as `5.82.1`, or one operator and a version such as `~> 5.82`, whose version is matched.
+```hcl
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    helm = "~> 2.17"
+  }
+}
+```
+
+A short entry such as `helm = "~> 2.17"` has no `source`. Terraform reads it as `hashicorp/helm`, so it matches `providerSource: "hashicorp/helm"`.
+
+The recipe does not change:
+
+* `provider` blocks and `module` blocks.
+* A provider without a version.
+* A version that is not a plain string, such as `var.aws_version`.
+
+`providerVersion` works like the `version` option of [Change module version](ChangeModuleVersion.md). For example, `~> 5.0` matches a current version of `5.82.1` or `~> 5.82`.
 
 ## Example
 
